@@ -1,0 +1,23 @@
+create database ventas_db;
+use ventas_db;
+create table venta (
+	n_venta INT AUTO_INCREMENT PRIMARY KEY,
+	producto VARCHAR(255) not null,
+	cantidad INT not null,
+	precio FLOAT not null,
+	nombre_cliente VARCHAR(255) not null,
+	apellido_cliente VARCHAR(255) not null,
+	vendedor VARCHAR(255) not null,
+	n_local VARCHAR(255) not null
+	);
+create table VentaCreditoCasa (
+	n_venta INT AUTO_INCREMENT PRIMARY KEY,
+    n_cuotas INT not null,
+    FOREIGN KEY (n_venta) REFERENCES venta(n_venta)
+	);
+create table VentaTarjetaCredito (
+	n_venta INT AUTO_INCREMENT PRIMARY KEY,
+    n_cuotas INT not null,
+    marca_tarjeta VARCHAR(255) not null,
+    FOREIGN KEY (n_venta) REFERENCES venta(n_venta)
+	);
