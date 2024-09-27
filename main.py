@@ -96,7 +96,28 @@ def eliminar_venta(gestion):
 
 #función para mostrar venta
 def mostrar_ventas(gestion):    
-    gestion.imprimir_todas_las_ventas()    
+    print('=============== Listado completo de Ventas ==============')
+    try:
+        ventas = gestion.leer_todas_las_ventas()
+        for venta in ventas:
+            impresion=(f"Venta n° {venta.n_venta} | producto: {venta.producto}\n" 
+                        f"cantidad: {venta.cantidad} | precio: {venta.precio}\n" 
+                        f"vendedor: {venta.vendedor} | n_local: {venta.n_local} \n")
+            if isinstance(venta, VentaTarjetaCredito):
+                impresion +=(f"Marca de Tarjeta: {venta.marca_tarjeta} | cuotas: {venta.n_cuotas} \n" 
+                             f"=====================================================================")
+                
+            elif isinstance(venta, VentaCreditoCasa):
+                impresion +=(f"Credito de la casa: {venta.n_cuotas} cuotas \n "
+                             f"=====================================================================")
+            elif isinstance(venta, Venta):
+                impresion +=(f"=====================================================================")
+            print(impresion)
+
+    except Exception as e:
+        print(f'Error al mostrar las ventas {e}')
+
+
     print('=====================================================================')
     input('Presione enter para continuar...')
     

@@ -4,7 +4,7 @@ from mysql.connector import Error, InterfaceError, DatabaseError, OperationalErr
 from dotenv import load_dotenv
 
 class Venta:
-    def __init__(self, producto, cantidad, precio, nombre_cliente, apellido_cliente, vendedor, n_local):
+    def __init__(self, producto, cantidad, precio, nombre_cliente, apellido_cliente, vendedor, n_local,n_venta=0):
         self.__producto = producto
         self.__cantidad = cantidad
         self.__precio = precio
@@ -12,7 +12,7 @@ class Venta:
         self.__apellido_cliente = apellido_cliente
         self.__n_local = n_local
         self.__vendedor = vendedor
-        self.__n_venta = int(0)
+        self.__n_venta = n_venta
 
     @property
     def n_venta(self):
@@ -84,8 +84,8 @@ class Venta:
 
 # Clase VentaTarjetaCredito
 class VentaTarjetaCredito(Venta):
-    def __init__(self, producto, cantidad, precio, nombre_cliente, apellido_cliente, vendedor, n_local, marca_tarjeta, n_cuotas):
-        super().__init__(producto, cantidad, precio, nombre_cliente, apellido_cliente, vendedor, n_local)
+    def __init__(self, producto, cantidad, precio, nombre_cliente, apellido_cliente, vendedor, n_local, marca_tarjeta, n_cuotas,n_venta=0):
+        super().__init__(producto, cantidad, precio, nombre_cliente, apellido_cliente, vendedor, n_local,n_venta)
         self.__marca_tarjeta = marca_tarjeta
         self.__n_cuotas = n_cuotas
 
@@ -108,8 +108,8 @@ class VentaTarjetaCredito(Venta):
 
 # Clase VentaCreditoCasa
 class VentaCreditoCasa(Venta):
-    def __init__(self, producto, cantidad, precio, nombre_cliente, apellido_cliente, vendedor, local, n_cuotas):
-        super().__init__(producto, cantidad, precio, nombre_cliente, apellido_cliente, vendedor, local)
+    def __init__(self, producto, cantidad, precio, nombre_cliente, apellido_cliente, vendedor, n_local, n_cuotas,n_venta=0):
+        super().__init__(producto, cantidad, precio, nombre_cliente, apellido_cliente, vendedor, n_local,n_venta)
         self.__n_cuotas = n_cuotas
 
     @property
@@ -272,7 +272,7 @@ class GestionVentas:
         finally:
             self.cerrar_conexion()
 
-    def imprimir_todas_las_ventas(self):
+    def leer_todas_las_ventas(self):
         self.connect_db()
         if not self.connection:
             print("Error: No se pudo establecer conexión con la base de datos.")
@@ -280,32 +280,41 @@ class GestionVentas:
 
         try:
             with self.connection.cursor(dictionary=True) as cursor:
-                cursor.execute('''
-                    SELECT v.*, 
-                        cc.n_cuotas AS n_cuotas, 
-                        tc.marca_tarjeta AS marca_tarjeta 
-                    FROM venta v
-                    LEFT JOIN VentaCreditoCasa cc ON v.n_venta = cc.n_venta
-                    LEFT JOIN VentaTarjetaCredito tc ON v.n_venta = tc.n_venta
-                ''')
-                ventas = cursor.fetchall()
+                cursor.execute('SELECT * FROM venta')
+                ventas_data = cursor.fetchall()
 
-                print('=============== Listado completo de Ventas ==============')    
-                for venta in ventas:
-                    detalles_venta = f"Venta n° {venta['n_venta']} - producto: {venta['producto']} - cantidad: {venta['cantidad']} - precio: {venta['precio']} - vendedor: {venta['vendedor']}\n"
-
-                    if 'marca_tarjeta' in venta and venta['marca_tarjeta']:
-                        detalles_venta += f" - compra con tarjeta de crédito: {venta['marca_tarjeta']} en: {venta['n_cuotas']} cuotas"
-                    elif 'n_cuotas' in venta and venta['n_cuotas']:
-                        detalles_venta += f" - compra con crédito de la casa en: {venta['n_cuotas']} cuotas"
-                    else:
-                        detalles_venta += " - compra al contado"
+                ventas = []
                     
-                    print(detalles_venta)
+                for venta_data in ventas_data:
+                    n_venta = venta_data['n_venta']
+
+                    # Primero verificamos si es VentaTarjetaCredito
+                    cursor.execute('SELECT marca_tarjeta, n_cuotas FROM VentaTarjetaCredito WHERE n_venta = %s', (n_venta,))
+                    venta_tarjeta_credito = cursor.fetchone()
+
+                    if venta_tarjeta_credito:
+                        venta_data['marca_tarjeta'] = venta_tarjeta_credito['marca_tarjeta']
+                        venta_data['n_cuotas'] = venta_tarjeta_credito['n_cuotas']
+                        venta = VentaTarjetaCredito(**venta_data)
+                    else:
+                        # Luego verificamos si es VentaCreditoCasa
+                        cursor.execute('SELECT n_cuotas FROM VentaCreditoCasa WHERE n_venta = %s', (n_venta,))
+                        venta_credito_casa = cursor.fetchone()
+                        if venta_credito_casa:                                 
+                            venta_data['n_cuotas'] = venta_credito_casa['n_cuotas']
+                            venta = VentaCreditoCasa(**venta_data)
+                        else:
+                            # Si no hay relación, creamos una instancia de Venta
+                            venta = Venta(**venta_data)
+                            
+                    ventas.append(venta)
+            return ventas 
         except Error as e:
             print(f'Error al imprimir las ventas: {e}')
+            return []  # Devuelve una lista vacía en caso de error
         finally:
             self.cerrar_conexion()
+
             
     def mejor_vendedor(self):
         self.connect_db()
@@ -314,20 +323,15 @@ class GestionVentas:
             return
 
         try:
-            with self.connection.cursor(dictionary=True) as cursor:
-                cursor.execute('''
-                    SELECT v.vendedor, SUM(v.precio * v.cantidad) AS total_ingresos
-                    FROM venta v
-                    GROUP BY v.vendedor
-                    ORDER BY total_ingresos DESC
-                    LIMIT 1
-                ''')
+            with self.connection.cursor() as cursor:
+                cursor.execute('''SELECT vendedor, SUM(precio * cantidad) AS total_vendido
+                                FROM venta GROUP BY vendedor
+                                ORDER BY total_vendido DESC LIMIT 1 ''')
                 mejor_vendedor = cursor.fetchone()
-
                 if mejor_vendedor:
-                    print(f"Mejor Vendedor: {mejor_vendedor['vendedor']} - Total Ingresos: {mejor_vendedor['total_ingresos']}")
+                    print(f"Mejor vendedor: {mejor_vendedor[0]} - Total vendido: {mejor_vendedor[1]}")
                 else:
-                    print("No se encontraron ventas.")
+                    print("No hay ventas registradas.")      
 
         except Error as e:
             print(f'Error al buscar el mejor vendedor: {e}')
